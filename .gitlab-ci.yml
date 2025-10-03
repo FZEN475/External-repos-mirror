@@ -1,0 +1,59 @@
+
+include:
+  - component: $CI_SERVER_FQDN/library/cicd/templates/mirroring/git-repository@main
+    inputs:
+      stage: sync
+      branch: "main"
+          
+  - component: $CI_SERVER_FQDN/library/cicd/auto-gitlab/auto-release@main
+
+stages:
+  - sync
+  - auto-gitlab
+
+.mirroring:git-repository:public:rules-extends:
+  - !reference [ .utils:toolkit:shared:tagged, not ]
+  - when: on_success
+
+.mirroring:git-repository:public:extends:
+  resource_group: "git-mirror-$CONCURRENCY_THREAD"
+  parallel:
+    matrix:
+      - CONCURRENCY_THREAD: "thread_1"
+        SRC_GIT_REPOSITORY: "https://gitlab.com/to-be-continuous/ansible.git"
+        DEST_GIT_REPOSITORY: "${CI_SERVER_URL}/library/to-be-continuous/ansible.git"
+      - CONCURRENCY_THREAD: "thread_1"
+        SRC_GIT_REPOSITORY: "https://gitlab.com/to-be-continuous/bash.git"
+        DEST_GIT_REPOSITORY: "${CI_SERVER_URL}/library/to-be-continuous/bash.git"
+      - CONCURRENCY_THREAD: "thread_1"
+        SRC_GIT_REPOSITORY: "https://gitlab.com/to-be-continuous/docker.git"
+        DEST_GIT_REPOSITORY: "${CI_SERVER_URL}/library/to-be-continuous/docker.git"
+        
+      - CONCURRENCY_THREAD: "thread_2"
+        SRC_GIT_REPOSITORY: "https://gitlab.com/to-be-continuous/helm.git"
+        DEST_GIT_REPOSITORY: "${CI_SERVER_URL}/library/to-be-continuous/helm.git"
+      - CONCURRENCY_THREAD: "thread_2"
+        SRC_GIT_REPOSITORY: "https://gitlab.com/to-be-continuous/python.git"
+        DEST_GIT_REPOSITORY: "${CI_SERVER_URL}/library/to-be-continuous/python.git"
+      - CONCURRENCY_THREAD: "thread_2"
+        SRC_GIT_REPOSITORY: "https://gitlab.com/to-be-continuous/terraform.git"
+        DEST_GIT_REPOSITORY: "${CI_SERVER_URL}/library/to-be-continuous/terraform.git"
+
+.auto-gitlab:auto-release:public:RELEASE-md:
+  - |
+    cat << 'EOF' > RELEASE.md
+    ### Release ${CI_COMMIT_TAG}
+    #### Клонированные репозитории:
+    
+    | Project Name | Source Repository | Destination Repository |
+    | :--- | :--- | :--- |
+    EOF
+
+  - |
+    yq '.[".mirroring:git-repository:public:extends"].parallel.matrix[] |
+      "|" + (.SRC_GIT_REPOSITORY | split("/") | .[-1] | sub("\.git$", "")) +
+      "|" + .SRC_GIT_REPOSITORY +
+      "|" + (.DEST_GIT_REPOSITORY | sub("\${CI_SERVER_URL}", env(CI_SERVER_URL))) + "|"' \
+      .gitlab-ci.yml >> RELEASE.md
+  - echo "" >> RELEASE.md
+
